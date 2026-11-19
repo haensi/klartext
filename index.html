@@ -1,0 +1,1181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Klartext – secret stripe decoder</title>
+<meta name="description" content="Point the camera at a striped puzzle box and read the secret message hidden in it.">
+<meta name="theme-color" content="#F6F2E7">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Klartext">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root {
+  /* palette lifted from the magazine page: label tomato, lettering yellow, the green box, paper, ink */
+  --paper: #F6F2E7;
+  --ink: #1B2416;
+  --forest: #1F3A1E;
+  --signal: #FFE55C;
+  --tomato: #E4532B;
+
+  --bg: var(--paper);
+  --fg: var(--ink);
+  --muted: #55604B;
+  --rule: rgba(27, 36, 22, .22);
+  --btn-bg: var(--forest);
+  --btn-fg: var(--signal);
+  --quiet-fg: var(--forest);
+  --alert-bg: #FBE3D9;
+  --alert-fg: #7A2410;
+  --focus: var(--tomato);
+
+  /* the viewfinder is dark in both themes */
+  --scope-bg: #132312;
+  --scope-fg: #F3EEDC;
+  --scope-soft: rgba(243, 238, 220, .14);
+
+  --face: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", system-ui, sans-serif;
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #142313;
+    --fg: #F3EEDC;
+    --muted: #A8B49A;
+    --rule: rgba(243, 238, 220, .24);
+    --btn-bg: var(--signal);
+    --btn-fg: #1B2416;
+    --quiet-fg: var(--signal);
+    --alert-bg: #4A1D10;
+    --alert-fg: #FFD9CC;
+    --focus: var(--signal);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #142313;
+  --fg: #F3EEDC;
+  --muted: #A8B49A;
+  --rule: rgba(243, 238, 220, .24);
+  --btn-bg: var(--signal);
+  --btn-fg: #1B2416;
+  --quiet-fg: var(--signal);
+  --alert-bg: #4A1D10;
+  --alert-fg: #FFD9CC;
+  --focus: var(--signal);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: inherit; }
+html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--face);
+  font-weight: 500;
+  font-size: 1.0625rem;
+  line-height: 1.45;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--scope-bg);
+  z-index: 4;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+/* ---------- start ---------- */
+.start {
+  max-width: 35rem;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 6vw, 3.5rem) 1.25rem 2.5rem;
+}
+.start h1 {
+  display: inline-block;
+  margin: 0 0 1.1rem -.15rem;
+  padding: .09em .32em .07em;
+  background: var(--tomato);
+  color: var(--signal);
+  font-weight: 800;
+  font-size: clamp(3rem, 15vw, 4.75rem);
+  line-height: 1;
+  letter-spacing: -.01em;
+  border-radius: .07em;
+  transform: rotate(-1.6deg);
+  transform-origin: left bottom;
+}
+.lede {
+  margin: 0 0 1.4rem;
+  max-width: 22ch;
+  font-size: clamp(1.35rem, 5.4vw, 1.7rem);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.demo { margin: 0 0 1.5rem; }
+.demo canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 5 / 2;
+  background: #fff;
+  border-radius: 3px;
+}
+.actions { display: grid; gap: .7rem; }
+.btn {
+  min-height: 3.5rem;
+  padding: .45rem 1.25rem;
+  border-radius: .9rem;
+  font-weight: 800;
+  font-size: 1.2rem;
+  border: 2px solid transparent;
+}
+.btn-main { background: var(--btn-bg); color: var(--btn-fg); }
+.btn-quiet { background: transparent; color: var(--quiet-fg); border-color: var(--rule); }
+.btn:active { transform: translateY(1px); }
+.msg {
+  margin: 1rem 0 0;
+  padding: .7rem .9rem;
+  border-radius: .6rem;
+  background: var(--alert-bg);
+  color: var(--alert-fg);
+  font-weight: 700;
+}
+.note { margin: 1.4rem 0 0; color: var(--muted); max-width: 46ch; font-size: 1rem; }
+
+/* ---------- viewfinder ---------- */
+.scope {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--scope-bg);
+  color: var(--scope-fg);
+  padding:
+    env(safe-area-inset-top, 0px)
+    env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
+}
+.scope :focus-visible { outline-color: var(--signal); }
+.scope-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .6rem .75rem;
+}
+.round {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--scope-soft);
+}
+.round svg { width: 1.3rem; height: 1.3rem; }
+.tag {
+  margin: 0;
+  padding: .3rem .7rem;
+  border-radius: .3rem;
+  background: var(--tomato);
+  color: var(--signal);
+  font-weight: 800;
+  font-size: 1.05rem;
+  line-height: 1.2;
+  transform: rotate(-1.2deg);
+}
+.tag[data-kind="found"] { background: var(--signal); color: var(--ink); }
+.tag[data-kind="idle"] { background: var(--scope-soft); color: var(--scope-fg); }
+
+.stage { position: relative; flex: 1 1 0; min-height: 0; }
+.stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: .9rem;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 1.5rem);
+  margin: 0;
+  padding: .42rem .85rem;
+  border-radius: .6rem;
+  background: rgba(19, 35, 18, .86);
+  color: var(--scope-fg);
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.scope-bottom { padding: .65rem .75rem .8rem; }
+.zoom {
+  display: flex;
+  justify-content: center;
+  gap: .3rem;
+  margin: 0 auto .7rem;
+  width: max-content;
+  padding: .25rem;
+  border-radius: 2rem;
+  background: var(--scope-soft);
+}
+.zoom button {
+  min-width: 2.9rem;
+  height: 2.2rem;
+  padding: 0 .5rem;
+  border: 0;
+  border-radius: 2rem;
+  background: transparent;
+  font-weight: 700;
+  font-size: .95rem;
+}
+.zoom button[aria-pressed="true"] { background: var(--signal); color: var(--ink); }
+.zoom button:disabled { opacity: .45; cursor: default; }
+.controls {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  max-width: 26rem;
+  margin: 0 auto;
+}
+.ctl {
+  display: grid;
+  justify-items: center;
+  gap: .25rem;
+  padding: .3rem;
+  border: 0;
+  border-radius: .7rem;
+  background: none;
+  font-weight: 700;
+  font-size: .9rem;
+  line-height: 1.2;
+}
+.ctl .disc {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: var(--scope-soft);
+}
+.ctl svg { width: 1.45rem; height: 1.45rem; }
+.ctl[aria-pressed="true"] .disc { background: var(--signal); color: var(--ink); }
+.ctl:disabled { opacity: .4; cursor: default; }
+.ctl-main .disc {
+  width: 4.4rem;
+  height: 4.4rem;
+  background: var(--signal);
+  color: var(--ink);
+  box-shadow: 0 0 0 4px var(--scope-bg), 0 0 0 7px var(--signal);
+  margin-bottom: .35rem;
+}
+.ctl-main svg { width: 1.9rem; height: 1.9rem; display: none; }
+.ctl-main[data-state="freeze"] .i-freeze,
+.ctl-main[data-state="resume"] .i-resume,
+.ctl-main[data-state="camera"] .i-camera { display: block; }
+
+#cam { position: fixed; left: 0; bottom: 0; width: 2px; height: 2px; opacity: .01; pointer-events: none; }
+#file, #fileCam { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<main class="start" id="start">
+  <h1>Klartext</h1>
+  <p class="lede">Reads the secret messages hidden in striped boxes.</p>
+  <figure class="demo">
+    <canvas id="demo" width="1040" height="416" role="img"
+      aria-label="A box filled with fine stripes. A scanner sweeps across and uncovers the words hidden in it: Hold a striped box up to the camera."></canvas>
+  </figure>
+  <div class="actions">
+    <button class="btn btn-main" id="btnStart" type="button">Start camera</button>
+    <button class="btn btn-quiet" id="btnPick" type="button">Choose a photo</button>
+  </div>
+  <p class="msg" id="startMsg" role="alert" hidden></p>
+  <p class="note">Made for messages printed as fine stripes, like the puzzle boxes in children’s magazines. Your pictures stay on this device.</p>
+</main>
+
+<section class="scope" id="scope" aria-label="Decoder" hidden>
+  <div class="scope-top">
+    <button class="round" id="btnClose" type="button" aria-label="Close the decoder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <p class="tag" id="status" role="status" data-kind="seek">Looking for stripes</p>
+  </div>
+  <div class="stage">
+    <canvas id="view" width="720" height="1280"></canvas>
+    <p class="hint" id="hint" hidden></p>
+  </div>
+  <div class="scope-bottom">
+    <div class="zoom" id="zoom" role="group" aria-label="Zoom">
+      <button type="button" data-zoom="1" aria-pressed="false">1×</button>
+      <button type="button" data-zoom="2" aria-pressed="false">2×</button>
+      <button type="button" data-zoom="3" aria-pressed="false">3×</button>
+    </div>
+    <div class="controls">
+      <button class="ctl" id="btnPhoto" type="button">
+        <span class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l5-4.5 3.5 3 3-2.5 4.5 4"/></svg></span>
+        <span>Photo</span>
+      </button>
+      <button class="ctl ctl-main" id="btnMain" type="button" data-state="freeze">
+        <span class="disc">
+          <svg class="i-freeze" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.3"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.3"/></svg>
+          <svg class="i-resume" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.2v13.6a1 1 0 0 0 1.5.86l11-6.8a1 1 0 0 0 0-1.72l-11-6.8A1 1 0 0 0 8 5.2z"/></svg>
+          <svg class="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 20 19.5H4A1.5 1.5 0 0 1 2.5 18v-8A1.5 1.5 0 0 1 4 8.5z"/><circle cx="12" cy="13.6" r="3.4"/></svg>
+        </span>
+        <span id="mainLabel">Freeze</span>
+      </button>
+      <button class="ctl" id="btnOrig" type="button" aria-pressed="false">
+        <span class="disc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg></span>
+        <span>Original</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<video id="cam" playsinline muted autoplay></video>
+<input id="file" type="file" accept="image/*" tabindex="-1" aria-hidden="true">
+<input id="fileCam" type="file" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
+
+<script id="core">
+/* Klartext core: finds a striped carrier pattern and demodulates the phase-shifted message hidden in it. No DOM. */
+const Klartext = (function () {
+  'use strict';
+  const TAU = Math.PI * 2;
+
+  /* ---------- radix-2 FFT ---------- */
+  function FFT(n) {
+    this.n = n;
+    const levels = Math.round(Math.log2(n));
+    this.rev = new Uint16Array(n);
+    for (let i = 0; i < n; i++) {
+      let r = 0;
+      for (let b = 0; b < levels; b++) r |= ((i >> b) & 1) << (levels - 1 - b);
+      this.rev[i] = r;
+    }
+    this.cos = new Float32Array(n / 2);
+    this.sin = new Float32Array(n / 2);
+    for (let i = 0; i < n / 2; i++) {
+      this.cos[i] = Math.cos(TAU * i / n);
+      this.sin[i] = Math.sin(TAU * i / n);
+    }
+  }
+  FFT.prototype.run = function (re, im) {
+    const n = this.n, rev = this.rev, cos = this.cos, sin = this.sin;
+    for (let i = 0; i < n; i++) {
+      const j = rev[i];
+      if (j > i) {
+        let t = re[i]; re[i] = re[j]; re[j] = t;
+        t = im[i]; im[i] = im[j]; im[j] = t;
+      }
+    }
+    for (let size = 2; size <= n; size <<= 1) {
+      const half = size >> 1, step = n / size;
+      for (let i = 0; i < n; i += size) {
+        for (let j = i, k = 0; j < i + half; j++, k += step) {
+          const l = j + half;
+          const tr = re[l] * cos[k] + im[l] * sin[k];
+          const ti = im[l] * cos[k] - re[l] * sin[k];
+          re[l] = re[j] - tr; im[l] = im[j] - ti;
+          re[j] += tr; im[j] += ti;
+        }
+      }
+    }
+  };
+
+  /* ---------- carrier detector: FFT of one N×N patch ---------- */
+  function Detector(N) {
+    N = N || 256;
+    this.N = N;
+    this.half = N >> 1;
+    this.fft = new FFT(N);
+    this.win = new Float32Array(N);
+    let s = 0;
+    for (let i = 0; i < N; i++) { this.win[i] = 0.5 - 0.5 * Math.cos(TAU * (i + 0.5) / N); s += this.win[i]; }
+    this.winSum = s * s;
+    this.lum = new Float32Array(N * N);
+    this.sr = new Float32Array(this.half * N);   // [u*N + y] after row FFTs
+    this.si = new Float32Array(this.half * N);
+    this.mag = new Float32Array(this.half * N);  // [u*N + v]
+    this.tr = new Float32Array(N);
+    this.ti = new Float32Array(N);
+    this.minPeriod = 2.3;
+    this.maxPeriod = 28;
+  }
+  /* rgba: Uint8ClampedArray of a W×H image; (x0,y0): top-left of the patch */
+  Detector.prototype.detect = function (rgba, W, H, x0, y0) {
+    const N = this.N, half = this.half, win = this.win, lum = this.lum;
+    const tr = this.tr, ti = this.ti, sr = this.sr, si = this.si, mag = this.mag;
+    x0 = Math.max(0, Math.min(W - N, x0 | 0));
+    y0 = Math.max(0, Math.min(H - N, y0 | 0));
+    if (W < N || H < N) return null;
+    let mean = 0;
+    for (let y = 0; y < N; y++) {
+      let p = ((y0 + y) * W + x0) * 4;
+      const o = y * N;
+      for (let x = 0; x < N; x++, p += 4) {
+        const g = (rgba[p] + 2 * rgba[p + 1] + rgba[p + 2]) * 0.25;
+        lum[o + x] = g; mean += g;
+      }
+    }
+    mean /= N * N;
+    for (let y = 0; y < N; y++) {
+      const o = y * N, wy = win[y];
+      for (let x = 0; x < N; x++) { tr[x] = (lum[o + x] - mean) * win[x] * wy; ti[x] = 0; }
+      this.fft.run(tr, ti);
+      for (let u = 0; u < half; u++) { sr[u * N + y] = tr[u]; si[u * N + y] = ti[u]; }
+    }
+    const rmin2 = (N / this.maxPeriod) * (N / this.maxPeriod);
+    const rmax2 = (N / this.minPeriod) * (N / this.minPeriod);
+    /* Search the half-plane for the strongest peak. Magnitudes are multiplied by their
+       radius first: photos fall off roughly as 1/f, a printed stripe raster does not. */
+    let best = 0, bu = 0, bv = 0, bandPow = 0;
+    for (let u = 0; u < half; u++) {
+      const o = u * N;
+      for (let y = 0; y < N; y++) { tr[y] = sr[o + y]; ti[y] = si[o + y]; }
+      this.fft.run(tr, ti);
+      for (let v = 0; v < N; v++) {
+        const fv = v < half ? v : v - N;
+        const p2 = tr[v] * tr[v] + ti[v] * ti[v];
+        const m = Math.sqrt(p2);
+        mag[o + v] = m;
+        if (u === 0 && fv <= 0) continue;
+        const r2 = u * u + fv * fv;
+        if (r2 < rmin2 || r2 > rmax2) continue;
+        bandPow += p2;
+        const mw = m * Math.sqrt(r2);
+        if (mw > best) { best = mw; bu = u; bv = fv; }
+      }
+    }
+    if (best <= 0) return null;
+    // magnitude at signed bin (u, v), using F(-u,-v) = conj F(u,v)
+    const at = (u, v) => {
+      if (u < 0) { u = -u; v = -v; }
+      if (u >= half || v >= half || v < -half) return 0;
+      return mag[u * N + (v < 0 ? v + N : v)];
+    };
+    // 1. isolation: peak against the average of a ring around it
+    let ringSum = 0, ringCnt = 0, nearPow = 0;
+    const rlow2 = (N / 40) * (N / 40);
+    for (let du = -12; du <= 12; du++) {
+      for (let dv = -12; dv <= 12; dv++) {
+        const d2 = du * du + dv * dv, u = bu + du, v = bv + dv, r2 = u * u + v * v;
+        if (d2 <= 2) { const m = at(u, v); if (r2 >= rmin2 && r2 <= rmax2) nearPow += m * m; continue; }
+        if (d2 < 16 || d2 > 144 || r2 < rlow2) continue;
+        ringSum += at(u, v) * Math.sqrt(r2); ringCnt++;
+      }
+    }
+    const iso = best / (ringSum / Math.max(1, ringCnt) + 1e-9);
+    // 2. share of the band's energy that sits in the peak
+    const frac = nearPow / (bandPow + 1e-9);
+    // 3. a straight edge gives a whole line through the origin; a raster gives one spot on it
+    let radial = 0;
+    const ks = [0.4, 0.55, 0.65, 0.75, 1.3, 1.45, 1.6, 2.4];   // 2 and 3 are left out: harmonics live there
+    for (let i = 0; i < ks.length; i++) {
+      const qu = Math.round(bu * ks[i]), qv = Math.round(bv * ks[i]);
+      if (qu > half - 3 || Math.abs(qv) > half - 3 || qu * qu + qv * qv < 9) continue;
+      if ((qu - bu) * (qu - bu) + (qv - bv) * (qv - bv) < 25) continue;   // still inside the peak's own skirt
+      for (let du = -1; du <= 1; du++) for (let dv = -1; dv <= 1; dv++) {
+        const u = qu + du, v = qv + dv, m = at(u, v) * Math.sqrt(u * u + v * v);
+        if (m > radial) radial = m;
+      }
+    }
+    const riso = best / (radial + 1e-9);
+    const quality = Math.min(iso / 8, frac / 0.08, riso / 1.8);
+    // sub-bin refinement: parabola through log-magnitudes
+    const lg = (u, v) => Math.log(at(u, v) + 1e-6);
+    const c = lg(bu, bv);
+    const refine = (a, b) => { const d = a - 2 * c + b; return d < -1e-6 ? Math.max(-0.5, Math.min(0.5, 0.5 * (a - b) / d)) : 0; };
+    const fx = (bu + refine(lg(bu - 1, bv), lg(bu + 1, bv))) / N;
+    const fy = (bv + refine(lg(bu, bv - 1), lg(bu, bv + 1))) / N;
+    return { fx: fx, fy: fy, period: 1 / Math.hypot(fx, fy), quality: quality, found: quality >= 1,
+             amp: at(bu, bv) / this.winSum, iso: iso, frac: frac, riso: riso };
+  };
+
+  /* ---------- box blurs (running sums, edges replicated) ---------- */
+  function boxH(src, dst, w, h, r) {
+    if (r < 1) { dst.set(src.subarray(0, w * h)); return; }
+    const inv = 1 / (2 * r + 1);
+    for (let y = 0; y < h; y++) {
+      const o = y * w, first = src[o], last = src[o + w - 1];
+      let acc = first * (r + 1);
+      for (let i = 0; i < r; i++) acc += src[o + (i < w ? i : w - 1)];
+      for (let x = 0; x < w; x++) {
+        const a = x + r, s = x - r - 1;
+        acc += (a < w ? src[o + a] : last) - (s >= 0 ? src[o + s] : first);
+        dst[o + x] = acc * inv;
+      }
+    }
+  }
+  function boxV(src, dst, w, h, r, acc) {
+    if (r < 1) { dst.set(src.subarray(0, w * h)); return; }
+    const inv = 1 / (2 * r + 1);
+    for (let x = 0; x < w; x++) acc[x] = src[x] * (r + 1);
+    for (let i = 0; i < r; i++) {
+      const o = (i < h ? i : h - 1) * w;
+      for (let x = 0; x < w; x++) acc[x] += src[o + x];
+    }
+    for (let y = 0; y < h; y++) {
+      const a = (y + r < h ? y + r : h - 1) * w;
+      const s = (y - r - 1 >= 0 ? y - r - 1 : 0) * w;
+      const o = y * w;
+      for (let x = 0; x < w; x++) {
+        const v = acc[x] + src[a + x] - src[s + x];
+        acc[x] = v; dst[o + x] = v * inv;
+      }
+    }
+  }
+  function blur(buf, tmp, w, h, r, passes, acc) {
+    for (let i = 0; i < passes; i++) { boxH(buf, tmp, w, h, r); boxV(tmp, buf, w, h, r, acc); }
+  }
+  // separable grey dilation (grow=true) or erosion over a (2r+1)² square
+  function morph(buf, tmp, w, h, r, grow) {
+    for (let y = 0; y < h; y++) {
+      const o = y * w;
+      for (let x = 0; x < w; x++) {
+        const a = x - r < 0 ? 0 : x - r, b = x + r > w - 1 ? w - 1 : x + r;
+        let m = buf[o + a];
+        for (let i = a + 1; i <= b; i++) { const v = buf[o + i]; if (grow ? v > m : v < m) m = v; }
+        tmp[o + x] = m;
+      }
+    }
+    for (let y = 0; y < h; y++) {
+      const a = y - r < 0 ? 0 : y - r, b = y + r > h - 1 ? h - 1 : y + r, o = y * w;
+      for (let x = 0; x < w; x++) {
+        let m = tmp[a * w + x];
+        for (let i = a + 1; i <= b; i++) { const v = tmp[i * w + x]; if (grow ? v > m : v < m) m = v; }
+        buf[o + x] = m;
+      }
+    }
+  }
+  // box radius whose `passes`-fold repetition has roughly the given sigma
+  function radiusFor(sigma, passes) {
+    return Math.max(0, Math.round((Math.sqrt(12 * sigma * sigma / passes + 1) - 1) / 2));
+  }
+
+  // radius and pass count of the repeated box blur closest to a wanted sigma (in cells)
+  function pickBlur(sigma) {
+    let best = { r: 1, n: 1 }, err = Infinity;
+    for (let r = 1; r <= 12; r++) for (let n = 1; n <= 3; n++) {
+      if (r > 1 && n === 1) continue;
+      const s = Math.sqrt(n * ((2 * r + 1) * (2 * r + 1) - 1) / 12);
+      const e = Math.abs(Math.log(s / sigma));
+      if (e < err) { err = e; best = { r: r, n: n }; }
+    }
+    return best;
+  }
+
+  /* ---------- decoder ---------- */
+  function Decoder() {
+    this.cap1 = 0; this.cap2 = 0; this.capW = 0;
+    this.paper = [255, 229, 92];
+    this.ink = [24, 32, 18];
+    this.M = 4;
+    this.sigma = 0.55;       // low-pass width in stripe periods
+    this.lo = -0.4; this.hi = 0.4;  // phase agreement mapped to ink…paper
+  }
+  Decoder.prototype._ensure = function (w, h, w2, h2, W) {
+    const n = w * h, n2 = w2 * h2;
+    if (n > this.cap1) {
+      this.cap1 = n;
+      this.zr = new Float32Array(n); this.zi = new Float32Array(n); this.tmp = new Float32Array(n);
+    }
+    if (n2 > this.cap2) {
+      this.cap2 = n2;
+      this.bR = new Float32Array(n2); this.bI = new Float32Array(n2); this.bA = new Float32Array(n2);
+      this.t2 = new Float32Array(n2); this.cnt = new Float32Array(n2);
+    }
+    if (W > this.capW) {
+      this.capW = W;
+      this.cx = new Float32Array(W); this.sx = new Float32Array(W);
+      this.prev = new Float32Array(W); this.acc = new Float64Array(W);
+      this.rowR = new Float32Array(W); this.rowI = new Float32Array(W); this.rowA = new Float32Array(W);
+      this.xi = new Int32Array(W); this.xj = new Int32Array(W); this.xw = new Float32Array(W);
+    }
+  };
+  /*
+   * rgba: W×H pixels. car: {fx, fy, period, amp}. out: Uint8ClampedArray (w*h*4) or null to only size.
+   * Returns {w, h, D, maxA, bbox} — the overlay grid is w×h cells of D×D source pixels each.
+   */
+  Decoder.prototype.gridFor = function (W, H, car) {
+    let D = Math.round(car.period / 3);
+    D = D < 2 ? 2 : D > 8 ? 8 : D;
+    return { D: D, w: (W / D) | 0, h: (H / D) | 0 };
+  };
+  Decoder.prototype.run = function (rgba, W, H, car, out, wantBox) {
+    const g = this.gridFor(W, H, car), D = g.D, w = g.w, h = g.h, M = this.M;
+    const w2 = Math.ceil(w / M), h2 = Math.ceil(h / M);
+    this._ensure(w, h, w2, h2, Math.max(W, w));
+    const zr = this.zr, zi = this.zi, tmp = this.tmp, acc = this.acc;
+    const cx = this.cx, sx = this.sx, prev = this.prev;
+    const kx = TAU * car.fx, ky = TAU * car.fy, P = car.period;
+    for (let x = 0; x < W; x++) { cx[x] = Math.cos(kx * x); sx[x] = Math.sin(kx * x); }
+    const horiz = Math.abs(car.fx) >= Math.abs(car.fy);
+    const norm = 1 / (4 * D * D);
+
+    /* 1. shift the carrier to DC and box-decimate. A first difference along the carrier's
+          main axis removes the image's own DC so it cannot alias into the baseband. */
+    if (!horiz) for (let x = 0, p = 0; x < W; x++, p += 4) prev[x] = rgba[p] + 2 * rgba[p + 1] + rgba[p + 2];
+    for (let by = 0; by < h; by++) {
+      const ro = by * w;
+      for (let bx = 0; bx < w; bx++) { zr[ro + bx] = 0; zi[ro + bx] = 0; }
+      for (let dy = 0; dy < D; dy++) {
+        const y = by * D + dy;
+        let p = y * W * 4;
+        const cy = Math.cos(ky * y) * norm, sy = Math.sin(ky * y) * norm;
+        if (horiz) {
+          let last = rgba[p] + 2 * rgba[p + 1] + rgba[p + 2];
+          for (let bx = 0, x = 0; bx < w; bx++) {
+            let pr = 0, pi = 0;
+            for (let dx = 0; dx < D; dx++, x++, p += 4) {
+              const gv = rgba[p] + 2 * rgba[p + 1] + rgba[p + 2];
+              const d = gv - last; last = gv;
+              pr += d * cx[x]; pi -= d * sx[x];
+            }
+            zr[ro + bx] += pr * cy + pi * sy;
+            zi[ro + bx] += pi * cy - pr * sy;
+          }
+        } else {
+          for (let bx = 0, x = 0; bx < w; bx++) {
+            let pr = 0, pi = 0;
+            for (let dx = 0; dx < D; dx++, x++, p += 4) {
+              const gv = rgba[p] + 2 * rgba[p + 1] + rgba[p + 2];
+              const d = gv - prev[x]; prev[x] = gv;
+              pr += d * cx[x]; pi -= d * sx[x];
+            }
+            zr[ro + bx] += pr * cy + pi * sy;
+            zi[ro + bx] += pi * cy - pr * sy;
+          }
+        }
+      }
+    }
+
+    /* 2. low-pass: keeps only what rides on the carrier */
+    const lp = pickBlur(this.sigma * P / D);
+    blur(zr, tmp, w, h, lp.r, lp.n, acc);
+    blur(zi, tmp, w, h, lp.r, lp.n, acc);
+
+    /* 3. coarse grid: local reference phase (wide blur) and carrier strength */
+    const bR = this.bR, bI = this.bI, bA = this.bA, t2 = this.t2, cnt = this.cnt;
+    bR.fill(0, 0, w2 * h2); bI.fill(0, 0, w2 * h2); bA.fill(0, 0, w2 * h2); cnt.fill(0, 0, w2 * h2);
+    for (let y = 0; y < h; y++) {
+      const o = y * w, o2 = ((y / M) | 0) * w2;
+      for (let x = 0; x < w; x++) {
+        const q = o2 + ((x / M) | 0), a = zr[o + x], b = zi[o + x];
+        bR[q] += a; bI[q] += b; bA[q] += Math.sqrt(a * a + b * b); cnt[q]++;
+      }
+    }
+    for (let q = 0; q < w2 * h2; q++) { const c = 1 / cnt[q]; bR[q] *= c; bI[q] *= c; bA[q] *= c; }
+    const rL = Math.max(1, radiusFor(7 * P / (D * M), 2));
+    const rA = Math.max(1, radiusFor(2.2 * P / (D * M), 2));
+    blur(bR, t2, w2, h2, rL, 2, acc);
+    blur(bI, t2, w2, h2, rL, 2, acc);
+    /* letters flip the phase, which cancels the carrier along their outlines and leaves dents in
+       the strength map — close them (max then min) so the mask covers the whole box */
+    const rc = Math.max(1, Math.ceil(3.5 * P / (D * M)));
+    blur(bA, t2, w2, h2, 1, 1, acc);
+    morph(bA, t2, w2, h2, rc, true);
+    morph(bA, t2, w2, h2, rc, false);
+    blur(bA, t2, w2, h2, rA, 2, acc);
+    let maxA = 0;
+    for (let q = 0; q < w2 * h2; q++) if (bA[q] > maxA) maxA = bA[q];
+
+    const res = { w: w, h: h, D: D, maxA: maxA, bbox: null };
+    if (!out) return res;
+
+    /* 4. compose: sign of the phase against the local reference = paper or ink */
+    const gain = 2 * Math.abs(Math.sin(Math.PI * (horiz ? car.fx : car.fy)));
+    const aRef = Math.max(maxA, 0.5 * (car.amp || 0) * gain, 1e-3);
+    const a0 = 0.30 * aRef, ia = 1 / (0.22 * aRef);
+    const eps = 0.02 * aRef * aRef;
+    const lo = this.lo, ir = 1 / (this.hi - this.lo);
+    const pr_ = this.paper[0], pg_ = this.paper[1], pb_ = this.paper[2];
+    const ir_ = this.ink[0], ig_ = this.ink[1], ib_ = this.ink[2];
+    const rowR = this.rowR, rowI = this.rowI, rowA = this.rowA, xi = this.xi, xj = this.xj, xw = this.xw;
+    for (let x = 0; x < w; x++) {
+      const f = (x + 0.5) / M - 0.5;
+      let i0 = Math.floor(f); const t = f - i0;
+      let i1 = i0 + 1;
+      if (i0 < 0) i0 = 0; if (i1 < 0) i1 = 0;
+      if (i0 > w2 - 1) i0 = w2 - 1; if (i1 > w2 - 1) i1 = w2 - 1;
+      xi[x] = i0; xj[x] = i1; xw[x] = t;
+    }
+    let minX = w, maxX = -1, minY = h, maxY = -1;
+    let colHit = null, rowHit = null;
+    if (wantBox) { colHit = new Uint32Array(w); rowHit = new Uint32Array(h); }
+    for (let y = 0; y < h; y++) {
+      const f = (y + 0.5) / M - 0.5;
+      let j0 = Math.floor(f); const ty = f - j0;
+      let j1 = j0 + 1;
+      if (j0 < 0) j0 = 0; if (j1 < 0) j1 = 0;
+      if (j0 > h2 - 1) j0 = h2 - 1; if (j1 > h2 - 1) j1 = h2 - 1;
+      const r0 = j0 * w2, r1 = j1 * w2;
+      for (let x = 0; x < w2; x++) {
+        rowR[x] = bR[r0 + x] + ty * (bR[r1 + x] - bR[r0 + x]);
+        rowI[x] = bI[r0 + x] + ty * (bI[r1 + x] - bI[r0 + x]);
+        rowA[x] = bA[r0 + x] + ty * (bA[r1 + x] - bA[r0 + x]);
+      }
+      const o = y * w;
+      let q = o * 4;
+      for (let x = 0; x < w; x++, q += 4) {
+        const i0 = xi[x], i1 = xj[x], t = xw[x];
+        const br = rowR[i0] + t * (rowR[i1] - rowR[i0]);
+        const bi = rowI[i0] + t * (rowI[i1] - rowI[i0]);
+        const a = rowA[i0] + t * (rowA[i1] - rowA[i0]);
+        let m = (a - a0) * ia;
+        if (m <= 0) { out[q + 3] = 0; continue; }
+        if (m > 1) m = 1;
+        m = m * m * (3 - 2 * m);
+        const v = (zr[o + x] * br + zi[o + x] * bi) / (Math.sqrt(br * br + bi * bi) * a + eps);
+        let k = (v - lo) * ir;
+        k = k < 0 ? 0 : k > 1 ? 1 : k;
+        k = k * k * (3 - 2 * k);
+        out[q] = ir_ + k * (pr_ - ir_);
+        out[q + 1] = ig_ + k * (pg_ - ig_);
+        out[q + 2] = ib_ + k * (pb_ - ib_);
+        out[q + 3] = m * 255;
+        if (wantBox && m > 0.5) { colHit[x]++; rowHit[y]++; }
+      }
+    }
+    if (wantBox) {
+      let cm = 0, rm = 0;
+      for (let x = 0; x < w; x++) if (colHit[x] > cm) cm = colHit[x];
+      for (let y = 0; y < h; y++) if (rowHit[y] > rm) rm = rowHit[y];
+      const ct = Math.max(2, 0.15 * cm), rt = Math.max(2, 0.15 * rm);
+      for (let x = 0; x < w; x++) if (colHit[x] >= ct) { if (x < minX) minX = x; if (x > maxX) maxX = x; }
+      for (let y = 0; y < h; y++) if (rowHit[y] >= rt) { if (y < minY) minY = y; if (y > maxY) maxY = y; }
+      if (maxX > minX && maxY > minY) res.bbox = { x: minX * D, y: minY * D, w: (maxX - minX + 1) * D, h: (maxY - minY + 1) * D };
+    }
+    return res;
+  };
+
+  return { Detector: Detector, Decoder: Decoder };
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const startEl = $('start'), scopeEl = $('scope'), video = $('cam'), view = $('view'), fileIn = $('file'), fileCam = $('fileCam');
+  const btnStart = $('btnStart');
+  const statusEl = $('status'), hintEl = $('hint'), startMsg = $('startMsg');
+  const btnMain = $('btnMain'), mainLabel = $('mainLabel'), btnOrig = $('btnOrig'), zoomEl = $('zoom');
+
+  const work = document.createElement('canvas');           // the frame being decoded
+  const wctx = work.getContext('2d', { willReadFrequently: true });
+  const ovc = document.createElement('canvas');             // decoded overlay, one cell per D×D pixels
+  const octx = ovc.getContext('2d');
+  const vctx = view.getContext('2d', { alpha: false });
+  const detector = new Klartext.Detector(256);
+  const decoder = new Klartext.Decoder();
+
+  const LIVE_MAX_PX = 2.1e6;   // size of the live frame we draw
+  const ROI_PX = 1.15e6;       // part of it we decode each frame
+  const STILL_MAX = 3200;      // longest side of a photo we decode
+  const PATCHES = [[.5, .5], [.27, .5], [.73, .5], [.5, .3], [.5, .7]];
+  const TEXT = {
+    seek: 'Looking for stripes',
+    live: 'Decoding live',
+    frozen: 'Frozen',
+    busy: 'Decoding…',
+    found: 'Message found',
+    none: 'No stripes found',
+    hintLive: 'Hold the striped box inside the corners and keep it steady.',
+    hintNone: 'No striped box found in this photo. Try a closer, sharper shot.',
+    camDenied: 'The live camera isn’t allowed here. Take a photo instead and it’s decoded right away.',
+    camMissing: 'No camera found on this device. Choose a photo instead.',
+    camFailed: 'The camera couldn’t start. Choose a photo instead.',
+    camStopped: 'The camera stopped. Start it again, or choose a photo.',
+    badPhoto: 'That file couldn’t be opened as a picture. Choose another photo.'
+  };
+
+  const S = {
+    mode: 'start',       // start | live | still
+    frozen: false, original: false, busy: false,
+    zoom: 0, lock: null, stream: null, gen: 0, patch: 0, frames: 0,
+    ov: null, ovImg: null, viewRect: null, roi: null,
+    found: false, seekSince: 0, ms: 0, downgraded: false,
+    noLive: false, sig: ''   // noLive: this page may not use the live camera
+  };
+
+  /* ---------- interface state ---------- */
+  function sync() {
+    const hintDue = S.mode === 'live' && !S.frozen && !S.lock && performance.now() - S.seekSince > 1500;
+    const sig = [S.mode, S.frozen, S.original, S.busy, S.zoom, !!S.lock, !!S.ov, S.found, S.noLive, hintDue].join();
+    if (sig === S.sig) return;
+    S.sig = sig;
+    tint();
+    btnStart.textContent = S.noLive ? 'Take a photo' : 'Start camera';
+    const inScope = S.mode !== 'start';
+    scopeEl.hidden = !inScope;
+    startEl.hidden = inScope;
+    const live = S.mode === 'live';
+    zoomEl.hidden = !live;
+    zoomEl.querySelectorAll('button').forEach((b) => { b.setAttribute('aria-pressed', String(+b.dataset.zoom === S.zoom)); b.disabled = S.frozen; });
+    const main = !live ? 'camera' : S.frozen ? 'resume' : 'freeze';
+    btnMain.dataset.state = main;
+    mainLabel.textContent = main === 'camera' ? 'Camera' : main === 'resume' ? 'Resume' : 'Freeze';
+    btnOrig.setAttribute('aria-pressed', String(S.original));
+    btnOrig.disabled = !S.ov;
+    let text, kind, hint = '';
+    if (S.busy) { text = TEXT.busy; kind = 'idle'; }
+    else if (live && S.frozen) { text = TEXT.frozen; kind = 'idle'; }
+    else if (live) {
+      text = S.lock ? TEXT.live : TEXT.seek; kind = S.lock ? 'found' : 'seek';
+      if (hintDue) hint = TEXT.hintLive;
+    } else { text = S.found ? TEXT.found : TEXT.none; kind = S.found ? 'found' : 'seek'; if (!S.found) hint = TEXT.hintNone; }
+    if (statusEl.textContent !== text) statusEl.textContent = text;
+    statusEl.dataset.kind = kind;
+    if (hintEl.textContent !== hint) hintEl.textContent = hint;
+    hintEl.hidden = !hint;
+  }
+  function say(msg) { startMsg.textContent = msg || ''; startMsg.hidden = !msg; }
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  function tint() {
+    if (themeMeta) themeMeta.content = S.mode === 'start' ? getComputedStyle(document.body).backgroundColor : '#132312';
+  }
+
+  /* ---------- drawing ---------- */
+  function render() {
+    const v = S.viewRect;
+    if (!v) return;
+    if (view.width !== v.w || view.height !== v.h) { view.width = v.w; view.height = v.h; }
+    vctx.drawImage(work, v.x, v.y, v.w, v.h, 0, 0, v.w, v.h);
+    const live = S.mode === 'live', r = S.roi;
+    if (live && r) {
+      vctx.fillStyle = 'rgba(15, 26, 14, .5)';
+      vctx.fillRect(0, 0, v.w, r.y);
+      vctx.fillRect(0, r.y + r.h, v.w, v.h - r.y - r.h);
+    }
+    if (S.ov && !S.original) {
+      const o = S.ov;
+      vctx.imageSmoothingEnabled = true;
+      vctx.imageSmoothingQuality = 'high';
+      vctx.drawImage(ovc, 0, 0, o.cw, o.ch, o.x - v.x, o.y - v.y, o.w, o.h);
+    }
+    if (live && r) {
+      const m = Math.round(v.w * .035), L = Math.round(v.w * .085);
+      const x0 = r.x + m, y0 = r.y + m, x1 = r.x + r.w - m, y1 = r.y + r.h - m;
+      vctx.lineWidth = Math.max(4, v.w / 150);
+      vctx.lineCap = 'round'; vctx.lineJoin = 'round';
+      vctx.strokeStyle = S.lock ? '#FFE55C' : 'rgba(246, 242, 231, .9)';
+      vctx.beginPath();
+      vctx.moveTo(x0, y0 + L); vctx.lineTo(x0, y0); vctx.lineTo(x0 + L, y0);
+      vctx.moveTo(x1 - L, y0); vctx.lineTo(x1, y0); vctx.lineTo(x1, y0 + L);
+      vctx.moveTo(x1, y1 - L); vctx.lineTo(x1, y1); vctx.lineTo(x1 - L, y1);
+      vctx.moveTo(x0 + L, y1); vctx.lineTo(x0, y1); vctx.lineTo(x0, y1 - L);
+      vctx.stroke();
+    }
+  }
+
+  // run the decoder over rgba (W×H, placed at ox,oy in the work frame) and stage the overlay
+  function decodeInto(rgba, W, H, car, ox, oy, wantBox) {
+    const g = decoder.gridFor(W, H, car);
+    if (!S.ovImg || S.ovImg.width !== g.w || S.ovImg.height !== g.h) {
+      S.ovImg = new ImageData(g.w, g.h);
+      ovc.width = g.w; ovc.height = g.h;
+    }
+    const res = decoder.run(rgba, W, H, car, S.ovImg.data, wantBox);
+    octx.putImageData(S.ovImg, 0, 0);
+    S.ov = { x: ox, y: oy, w: g.w * g.D, h: g.h * g.D, cw: g.w, ch: g.h };
+    return res;
+  }
+
+  /* ---------- live camera ---------- */
+  function updateLock(d) {
+    const L = S.lock;
+    if (d && d.found) {
+      if (L) {
+        // a carrier and its negative are the same pattern
+        if (Math.hypot(d.fx + L.fx, d.fy + L.fy) < Math.hypot(d.fx - L.fx, d.fy - L.fy)) { d.fx = -d.fx; d.fy = -d.fy; }
+        if (Math.hypot(d.fx - L.fx, d.fy - L.fy) < 0.02) {
+          L.fx += (d.fx - L.fx) * 0.5; L.fy += (d.fy - L.fy) * 0.5;
+          L.period = 1 / Math.hypot(L.fx, L.fy);
+          L.amp = Math.max(L.amp * 0.9, d.amp); L.quality = d.quality; L.miss = 0;
+          return;
+        }
+        if (L.miss < 3 && d.quality < L.quality * 1.5) { L.miss++; return; }
+      }
+      S.lock = { fx: d.fx, fy: d.fy, period: d.period, amp: d.amp, quality: d.quality, miss: 0 };
+    } else if (L && ++L.miss > 7) {
+      S.lock = null;
+    }
+  }
+
+  function liveFrame(vw, vh) {
+    const t0 = performance.now();
+    if (!S.zoom) S.zoom = Math.min(vw, vh) >= 1400 ? 2 : 1;
+    const z = S.zoom;
+    const sw = Math.round(vw / z), sh = Math.round(vh / z);
+    const sx = (vw - sw) >> 1, sy = (vh - sh) >> 1;
+    const s = Math.min(1, Math.sqrt(LIVE_MAX_PX / (sw * sh)));
+    const pw = Math.max(2, Math.round(sw * s)), ph = Math.max(2, Math.round(sh * s));
+    if (work.width !== pw || work.height !== ph) { work.width = pw; work.height = ph; S.lock = null; }
+    wctx.drawImage(video, sx, sy, sw, sh, 0, 0, pw, ph);
+    const roiH = Math.min(ph, Math.max(256, Math.floor(ROI_PX / pw)));
+    const roiY = (ph - roiH) >> 1;
+    const img = wctx.getImageData(0, roiY, pw, roiH);
+    const had = !!S.lock;
+    if (!had || (S.frames & 1) === 0) {
+      const p = PATCHES[S.patch++ % PATCHES.length];
+      updateLock(detector.detect(img.data, pw, roiH, pw * p[0] - 128, roiH * p[1] - 128));
+    }
+    if (S.lock) decodeInto(img.data, pw, roiH, S.lock, 0, roiY, false);
+    else { S.ov = null; if (had) S.seekSince = performance.now(); }
+    S.viewRect = { x: 0, y: 0, w: pw, h: ph };
+    S.roi = { x: 0, y: roiY, w: pw, h: roiH };
+    render();
+    sync();
+    // a camera stream too heavy for this device: fall back to 1080p once
+    S.ms += (performance.now() - t0 - S.ms) * 0.1;
+    if (++S.frames > 40 && S.ms > 90 && !S.downgraded && vw * vh > 2.4e6 && S.stream) {
+      S.downgraded = true;
+      const track = S.stream.getVideoTracks()[0];
+      if (track && track.applyConstraints) {
+        track.applyConstraints({ width: { ideal: 1920 }, height: { ideal: 1080 } }).then(() => { S.zoom = 0; S.lock = null; }, () => {});
+      }
+    }
+  }
+
+  function loop() {
+    const gen = ++S.gen;
+    const step = () => {
+      if (gen !== S.gen || S.mode !== 'live' || S.frozen) return;
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (vw && vh && video.readyState >= 2) {
+        try { liveFrame(vw, vh); } catch (err) { console.error(err); }
+      }
+      next();
+    };
+    const next = () => {
+      if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(step);
+      else requestAnimationFrame(step);
+    };
+    next();
+  }
+
+  function stopCamera() {
+    S.gen++;
+    if (S.stream) { S.stream.getTracks().forEach((t) => t.stop()); S.stream = null; }
+    video.srcObject = null;
+  }
+
+  async function startCamera() {
+    say('');
+    if (S.noLive) { fileCam.click(); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { S.noLive = true; fail(TEXT.camDenied); return; }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } }
+      });
+    } catch (err) {
+      const n = err && err.name;
+      if (n === 'NotAllowedError' || n === 'SecurityError') S.noLive = true;
+      fail(n === 'NotFoundError' || n === 'OverconstrainedError' ? TEXT.camMissing
+        : S.noLive ? TEXT.camDenied : TEXT.camFailed);
+      return;
+    }
+    stopCamera();
+    S.stream = stream;
+    const track = stream.getVideoTracks()[0];
+    if (track) track.addEventListener('ended', () => { if (S.stream === stream) fail(TEXT.camStopped); });
+    video.srcObject = stream;
+    try { await video.play(); } catch (err) { /* autoplay with a muted inline video is allowed; ignore */ }
+    Object.assign(S, { mode: 'live', frozen: false, original: false, busy: false, zoom: 0, lock: null, ov: null,
+      frames: 0, ms: 0, downgraded: false, found: false, seekSince: performance.now() });
+    sync();
+    loop();
+  }
+  function fail(msg) {
+    stopCamera();
+    S.mode = 'start'; S.ov = null; S.busy = false;
+    sync();
+    say(msg);
+  }
+
+  /* ---------- photos ---------- */
+  const readFile = (file) => new Promise((ok, no) => {
+    const fr = new FileReader();
+    fr.onload = () => ok(fr.result); fr.onerror = () => no(fr.error);
+    fr.readAsDataURL(file);
+  });
+  const loadImage = (src) => new Promise((ok, no) => {
+    const im = new Image();
+    im.onload = () => ok(im); im.onerror = () => no(new Error('decode'));
+    im.src = src;
+  });
+  const paint = () => new Promise((ok) => requestAnimationFrame(() => setTimeout(ok, 0)));
+
+  // look for the stripe pattern all over a still image; returns the best carrier or null
+  function scan(rgba, W, H) {
+    const nx = Math.max(1, Math.ceil(W / 256)), ny = Math.max(1, Math.ceil(H / 256));
+    let best = null;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const d = detector.detect(rgba, W, H,
+        nx > 1 ? (W - 256) * i / (nx - 1) : (W - 256) / 2,
+        ny > 1 ? (H - 256) * j / (ny - 1) : (H - 256) / 2);
+      if (d && d.found && (!best || d.quality > best.quality)) best = d;
+    }
+    return best;
+  }
+
+  async function decodeStill(source, sw, sh) {
+    stopCamera();
+    Object.assign(S, { mode: 'still', frozen: false, original: false, busy: true, lock: null, ov: null, roi: null, found: false });
+    sync();
+    await paint();
+    // very coarse stripes (a close-up) only show up at a smaller scale, so try twice
+    let car = null, W = 0, H = 0, data = null;
+    for (const shrink of [1, 0.5]) {
+      const s = Math.min(1, STILL_MAX / Math.max(sw, sh)) * shrink;
+      W = Math.max(1, Math.round(sw * s)); H = Math.max(1, Math.round(sh * s));
+      work.width = W; work.height = H;
+      wctx.drawImage(source, 0, 0, sw, sh, 0, 0, W, H);
+      data = wctx.getImageData(0, 0, W, H);
+      car = scan(data.data, W, H);
+      if (car || Math.max(W, H) < 700) break;
+    }
+    S.viewRect = { x: 0, y: 0, w: W, h: H };
+    if (car) {
+      const res = decodeInto(data.data, W, H, car, 0, 0, true);
+      const b = res.bbox;
+      if (b) {
+        const pad = Math.round(0.07 * Math.max(b.w, b.h));
+        const x = Math.max(0, b.x - pad), y = Math.max(0, b.y - pad);
+        S.viewRect = { x: x, y: y, w: Math.min(W, b.x + b.w + pad) - x, h: Math.min(H, b.y + b.h + pad) - y };
+        S.found = true;
+      } else S.ov = null;
+    }
+    S.busy = false;
+    render();
+    sync();
+  }
+
+  async function openPhoto(file) {
+    say('');
+    let im;
+    try { im = await loadImage(await readFile(file)); }
+    catch (err) { if (S.mode === 'start') say(TEXT.badPhoto); return; }
+    await decodeStill(im, im.naturalWidth, im.naturalHeight);
+  }
+
+  /* ---------- controls ---------- */
+  btnStart.addEventListener('click', startCamera);
+  $('btnPick').addEventListener('click', () => fileIn.click());
+  $('btnPhoto').addEventListener('click', () => fileIn.click());
+  [fileIn, fileCam].forEach((input) => input.addEventListener('change', () => {
+    const f = input.files && input.files[0];
+    input.value = '';
+    if (f) openPhoto(f);
+  }));
+  $('btnClose').addEventListener('click', () => { stopCamera(); S.mode = 'start'; S.ov = null; sync(); });
+  btnMain.addEventListener('click', () => {
+    if (S.mode !== 'live') { startCamera(); return; }
+    S.frozen = !S.frozen;
+    if (!S.frozen) { S.original = false; S.seekSince = performance.now(); loop(); }
+    render();
+    sync();
+  });
+  btnOrig.addEventListener('click', () => { S.original = !S.original; render(); sync(); });
+  zoomEl.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-zoom]');
+    if (!b) return;
+    S.zoom = +b.dataset.zoom; S.lock = null;
+    sync();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && S.mode === 'live' && !S.frozen) { video.play().catch(() => {}); loop(); }
+  });
+  window.addEventListener('pagehide', stopCamera);
+  if (window.matchMedia) {
+    const scheme = window.matchMedia('(prefers-color-scheme: dark)');
+    if (scheme.addEventListener) scheme.addEventListener('change', tint);
+  }
+  // offline support: only on a real web address, never from a file
+  if ('serviceWorker' in navigator && window.isSecureContext && /^https?:$/.test(location.protocol)) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  /* ---------- the demo on the start page: a real striped box, decoded by the same code ---------- */
+  function buildDemo() {
+    const cv = $('demo'), W = cv.width, H = cv.height, cx = cv.getContext('2d');
+    const lines = ['Hold a striped box', 'up to the camera'];
+    const t = document.createElement('canvas'); t.width = W; t.height = H;
+    const tx = t.getContext('2d');
+    let size = 104;
+    const face = getComputedStyle(document.body).fontFamily;
+    do { size -= 4; tx.font = '800 ' + size + 'px ' + face; }
+    while (size > 40 && Math.max(tx.measureText(lines[0]).width, tx.measureText(lines[1]).width) > W * 0.84);
+    tx.fillStyle = '#000'; tx.fillRect(0, 0, W, H);
+    tx.fillStyle = '#fff'; tx.textBaseline = 'middle';
+    tx.fillText(lines[0], W * 0.08, H * 0.34);
+    tx.fillText(lines[1], W * 0.08, H * 0.69);
+    const mask = tx.getImageData(0, 0, W, H).data;
+    // fine stripes; inside the letters the stripes are shifted by half a period
+    const img = cx.createImageData(W, H), d = img.data;
+    const P = 6, a = 15 * Math.PI / 180, kx = 2 * Math.PI * Math.cos(a) / P, ky = 2 * Math.PI * Math.sin(a) / P;
+    for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i += 4) {
+      const c = Math.cos(kx * x + ky * y + (mask[i] > 127 ? Math.PI : 0));
+      const v = Math.max(0, Math.min(1, 0.5 + 1.5 * c));
+      d[i] = 34 + 221 * v; d[i + 1] = 38 + 217 * v; d[i + 2] = 30 + 225 * v; d[i + 3] = 255;
+    }
+    cx.putImageData(img, 0, 0);
+    const car = detector.detect(d, W, H, W / 2 - 128, H / 2 - 128);
+    if (!car || !car.found) return;
+    const dec = new Klartext.Decoder();
+    const g = dec.gridFor(W, H, car);
+    const out = new ImageData(g.w, g.h);
+    dec.run(d, W, H, car, out.data, false);
+    const oc = document.createElement('canvas'); oc.width = g.w; oc.height = g.h;
+    oc.getContext('2d').putImageData(out, 0, 0);
+    const F = 20;                   // stripes stay visible as a frame around the decoded window
+    const draw = (k) => {           // k: 0…1, how far the scanner has travelled
+      cx.putImageData(img, 0, 0);
+      const x = Math.round(W * k);
+      if (x > F) {
+        cx.save(); cx.beginPath(); cx.rect(F, F, Math.min(x, W - F) - F, H - 2 * F); cx.clip();
+        cx.imageSmoothingQuality = 'high';
+        cx.drawImage(oc, 0, 0, g.w, g.h, 0, 0, g.w * g.D, g.h * g.D);
+        cx.restore();
+      }
+      if (k > 0 && k < 1) { cx.fillStyle = '#E4532B'; cx.fillRect(x - 5, 0, 10, H); }
+    };
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { draw(1); return; }
+    draw(0);
+    const T = 1700, t0 = performance.now() + 650;
+    const tick = (now) => {
+      const u = Math.max(0, Math.min(1, (now - t0) / T));
+      draw(u * u * (3 - 2 * u));
+      if (u < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+  buildDemo();
+
+  sync();
+})();
+</script>
+</body>
+</html>
